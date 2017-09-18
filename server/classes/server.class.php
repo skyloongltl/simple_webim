@@ -1,5 +1,5 @@
 <?php
-namespace server;
+namespace server\classes;
 
 class server{
     private $server = null;
@@ -58,6 +58,9 @@ class server{
                     'content' => $data['content'],
                     'fd' => $frame->fd,
                 );
+                if(!Chat::is_login($frame->fd)){
+                    $this->server->push($frame->fd, json_encode(array('code'=>1, 'msg'=>'请先登录')));
+                }
 
                 if(!isset($data['content']) || !isset($data['content'])){
                     $data['task'] = 'empty';
@@ -78,14 +81,14 @@ class server{
         $pushMsg = array('code'=>0, 'msg'=>'', 'data'=>array());
         switch ($data['task']){
             case 'open':
-                $open = \Chat::open();
+                $open = Chat::open();
                 $pushMsg['data']['type'] = '3';
                 $pushMsg['data']['userInfo'] = $open['userInfo'];
                 $pushMsg['data']['history'] = $open['history'];
                 $this->server->push($data['fd'], json_encode($pushMsg));
                 return 'Finished';
             case 'login':
-                $login = \Chat::login($data['fd'], array('name'=>$data['name'], 'head_img'=>$data['head_img']));
+                $login = Chat::login($data['fd'], array('name'=>$data['name'], 'head_img'=>$data['head_img']));
                 $pushMsg['data']['type'] = '1';
                 $pushMsg['data']['name'] = $data['name'];
                 $pushMsg['data']['head_img'] = $data['head_img'];
@@ -93,29 +96,37 @@ class server{
                 $pushMsg['data']['content'] = $login['content'];
                 break;
             case 'new':
-                $newMessage = \Chat::dealMessage(array('content'=>$data['content']));
+                $time = date('Y-m-d H:i:s', time());
+                Chat::addHistory(array(
+                    'name' => $data['name'],
+                    'head_img' => $data['head_img'],
+                    'content' => $data['content'],
+                    'time' => $time,
+                ));
+                $newMessage = Chat::dealMessage(array('content'=>$data['content']));
                 $pushMsg['data']['type'] = '2';
                 $pushMsg['data']['name'] = $data['name'];
                 $pushMsg['data']['head_img'] = $data['head_img'];
                 $pushMsg['data']['fd'] = $data['fd'];
                 $pushMsg['data']['content'] = $newMessage['content'];
                 $pushMsg['data']['aiTeFd'] = $newMessage['aiTeFd'];
+                $pushMsg['data']['time'] = $time;
                 break;
             case 'logout':
-                $logout = \Chat::logout($data['fd'], $data['name']);
-                $pushMsg['data']['type'] = 4;
+                $logout = Chat::logout($data['fd'], $data['name']);
+                $pushMsg['data']['type'] = '4';
                 $pushMsg['data']['fd'] = $data['fd'];
                 $pushMsg['data']['content'] = $logout['content'];
                 break;
             case 'empty':
                 $pushMsg['code'] = 1;
                 $pushMsg['msg'] = '不能发送空信息';
-                $this->server->push($data['fd'], $pushMsg);
+                $this->server->push($data['fd'], json_encode($pushMsg));
                 return 'Finished';
             case 'nologin':
                 $pushMsg['code'] = 1;
                 $pushMsg['msg'] = '请填写邮箱或昵称';
-                $this->server->push($data['fd'], $pushMsg);
+                $this->server->push($data['fd'], json_encode($pushMsg));
                 return 'Finished';
         }
         $this->sendMessage($pushMsg);
@@ -123,6 +134,34 @@ class server{
     }
 
     public function onClose(\swoole_websocket_server $server, $fd){
+        $userInfo = Chat::getOneUserInfo($fd);
+        if(isset($userInfo)){
+            $data = array(
+                'task' => 'logout',
+                'name' => $userInfo['name'],
+                'fd' => $fd,
+            );
+            $this->server->task(json_encode($data));
+        }
+        echo "client is close\n";
+    }
 
+    public function onFinish(\swoole_websocket_server $server, $task_id, $data){
+        echo "task [ $task_id ] is Finished\n";
+        echo "result: $data";
+    }
+
+    public function sendMessage($pushMsg){
+        foreach ($this->server->connections as $fd){
+            if(isset($pushMsg['data']['aiTeFd']) && in_array($fd, $pushMsg['data']['aiTeFd'])){
+                $pushMsg['data']['aiTe'] = '1';
+            }
+            if($fd == $pushMsg['data']['fd']){
+                $pushMsg['data']['is_own'] = '1';
+            }else{
+                $pushMsg['data']['is_own'] = '0';
+            }
+            $this->server->push($fd, json_encode($pushMsg));
+        }
     }
 }

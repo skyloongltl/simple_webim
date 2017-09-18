@@ -40,7 +40,7 @@ class ChatUserInfo{
     }
 
     public function addHistory($chatRecord){
-        $sql = "INSERT INTO webim (`name`, `head_img`, `content`, `time`) VALUES(?, ?, ?, ?)";
+        $sql = "INSERT INTO webim (`name`, `head_img`, `content`, `time`) VALUES(?, ?, ?, ?) LIMIT 1,30";
         $stmt = ImMysql::getInstance()->prepare($sql);
         if($stmt->execute($chatRecord) === false){
             //TODO

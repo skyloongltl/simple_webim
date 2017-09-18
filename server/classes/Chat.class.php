@@ -32,6 +32,14 @@ class Chat{
         );
     }
 
+    public static function is_login($fd){
+        $is_login = self::$redis->exists($fd . ':client');
+        if(!$is_login){
+            return false;
+        }
+        return true;
+    }
+
     public static function dealMessage($data){
         preg_match_all('%@\S*%', $data['content'], $match);
         if(isset($match[0][0])){
@@ -57,15 +65,25 @@ class Chat{
                 //TODO
             }
         ), $data['content']);
-        $data['time'] = time();
 
         return $data;
+    }
+
+    public static function getOneUserInfo($fd){
+        return self::$chatUser->getOneUserInfo($fd);
     }
 
     public static function open(){
         $ret = self::$chatUser->getAllHistory();
         $fds = self::$chatUser->getAllOnlineUser();
         $usersInfo = self::$chatUser->getAllUserInfo($fds);
+
+        foreach ($ret as $val){
+            foreach ($val as $v){
+                htmlspecialchars_decode(stripslashes($v));
+            }
+            self::dealMessage($val);
+        }
         return array(
             'usersInfo' => $usersInfo,
             'history' => $ret,
@@ -73,6 +91,9 @@ class Chat{
     }
 
     public static function addHistory($info){
+        foreach ($info as $val){
+            htmlspecialchars(addslashes(trim($val)));
+        }
         self::$chatUser->addHistory($info);
     }
 }
